@@ -1,0 +1,273 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "name": "Fetch_Google_Drive_MetaData",
+        "type": "WebActivity",
+        "state": "Inactive",
+        "onInactiveMarkAs": "Succeeded",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "method": "GET",
+          "headers": {},
+          "relativeUrl": {
+            "value": "@concat('drive/v3/files?key=AIzaSyAoFvSxUuXKEjAZlx2PYohy4aVyBlfRQ8A&q=%271tx8VA-JwcruYUNo81x6R_0O7lxZ2gU26%27+in+parents+and+modifiedTime+%3E+%27', variables('LastProcessedTime'), '%27+and+trashed+=+false&fields=files(id,name,modifiedTime)')\r\n",
+            "type": "Expression"
+          }
+        },
+        "externalReferences": {
+          "connection": "49b2dd1a-0f8c-450a-ae87-7da1f2937eae"
+        }
+      },
+      {
+        "name": "Notebook1",
+        "type": "TridentNotebook",
+        "state": "Inactive",
+        "onInactiveMarkAs": "Succeeded",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "workspaceId": "f2733358-a23a-4d77-9b98-25b9043a01c8"
+        }
+      },
+      {
+        "name": "COPY_DATA_FROM_MYSQL",
+        "type": "Copy",
+        "state": "Inactive",
+        "onInactiveMarkAs": "Succeeded",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "MySqlSource",
+            "datasetSettings": {
+              "annotations": [],
+              "type": "MySqlTable",
+              "schema": [],
+              "typeProperties": {
+                "tableName": "`DOne_RestaurantReviews_Raw`"
+              },
+              "externalReferences": {
+                "connection": "aee30e3f-5f64-48dc-84c2-9ca33765c613"
+              }
+            }
+          },
+          "enableStaging": false
+        }
+      },
+      {
+        "name": "LookUp_Configuration",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": "select * from audit.configuration_meta",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "firstRowOnly": false,
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "SQL_INTEGRATION_RESTR",
+              "properties": {
+                "annotations": [],
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "endpoint": "ztmn4aa7cswezmavudccwve7xe-uhbbvyvsreqevetfmd242dhbsq.datawarehouse.fabric.microsoft.com",
+                  "artifactId": "ac022c8c-bc76-4ba1-9fa0-dfc07ae88631",
+                  "workspaceId": "e21ac2a1-89b2-4a20-9265-60f5cd0ce194"
+                }
+              }
+            },
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "typeProperties": {}
+          }
+        }
+      },
+      {
+        "name": "ForEachPL",
+        "type": "ForEach",
+        "dependsOn": [
+          {
+            "activity": "LookUp_Configuration",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@activity('LookUp_Configuration').output.value",
+            "type": "Expression"
+          },
+          "isSequential": true,
+          "activities": [
+            {
+              "name": "COPY_DATA_FROM_MYSQL_copy1",
+              "type": "Copy",
+              "dependsOn": [
+                {
+                  "activity": "LKP_AUDIT_LOGS",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "MySqlSource",
+                  "query": "SELECT *,NOW() AS last_modified\nFROM @{item().connection_name}\nWHERE @{item().watermark} > '@{activity('LKP_AUDIT_LOGS').output.value[0].last_offset_value}'",
+                  "datasetSettings": {
+                    "annotations": [],
+                    "type": "MySqlTable",
+                    "schema": [],
+                    "typeProperties": {
+                      "tableName": "`DOne_RestaurantReviews_Raw`"
+                    },
+                    "externalReferences": {
+                      "connection": "aee30e3f-5f64-48dc-84c2-9ca33765c613"
+                    }
+                  }
+                },
+                "sink": {
+                  "type": "LakehouseTableSink",
+                  "tableActionOption": "Append",
+                  "applyVOrder": false,
+                  "enableTimestampNtz": false,
+                  "datasetSettings": {
+                    "annotations": [],
+                    "linkedService": {
+                      "name": "LH_BRONZE_RESTR",
+                      "properties": {
+                        "annotations": [],
+                        "type": "Lakehouse",
+                        "typeProperties": {
+                          "workspaceId": "5fc56f33-132b-4c9b-bb8b-0402af1bd32a",
+                          "artifactId": "b1f4b002-b5e1-4d34-930b-6fa04b3d9313",
+                          "rootFolder": "Tables"
+                        }
+                      }
+                    },
+                    "type": "LakehouseTable",
+                    "schema": [],
+                    "typeProperties": {
+                      "schema": "dbo",
+                      "table": "d_one_restaurant_reviews"
+                    }
+                  }
+                },
+                "enableStaging": false,
+                "translator": {
+                  "type": "TabularTranslator",
+                  "typeConversion": true,
+                  "typeConversionSettings": {
+                    "allowDataTruncation": false,
+                    "treatBooleanAsNumber": false
+                  }
+                }
+              }
+            },
+            {
+              "name": "LKP_AUDIT_LOGS",
+              "description": "lookup audit logs",
+              "type": "Lookup",
+              "dependsOn": [],
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "DataWarehouseSource",
+                  "sqlReaderQuery": "@concat(\n  'SELECT MAX(last_offset_value) AS last_offset_value FROM audit.load_logs WHERE tablename = ''',\n  item().datasource,\n  ''''\n)",
+                  "queryTimeout": "02:00:00",
+                  "partitionOption": "None"
+                },
+                "firstRowOnly": false,
+                "datasetSettings": {
+                  "annotations": [],
+                  "linkedService": {
+                    "name": "SQL_INTEGRATION_RESTR",
+                    "properties": {
+                      "annotations": [],
+                      "type": "DataWarehouse",
+                      "typeProperties": {
+                        "endpoint": "ztmn4aa7cswezmavudccwve7xe-uhbbvyvsreqevetfmd242dhbsq.datawarehouse.fabric.microsoft.com",
+                        "artifactId": "ac022c8c-bc76-4ba1-9fa0-dfc07ae88631",
+                        "workspaceId": "e21ac2a1-89b2-4a20-9265-60f5cd0ce194"
+                      }
+                    }
+                  },
+                  "type": "DataWarehouseTable",
+                  "schema": [],
+                  "typeProperties": {
+                    "schema": "audit",
+                    "table": "load_logs"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": {
+      "LastProcessedTime": {
+        "type": "String",
+        "defaultValue": "2026-01-01T00:00:00Z"
+      },
+      "NewFilesFound": {
+        "type": "Boolean",
+        "defaultValue": false
+      },
+      "watermark_column_name": {
+        "type": "String"
+      },
+      "source_table_name": {
+        "type": "String"
+      },
+      "destination_table_name": {
+        "type": "String"
+      }
+    }
+  }
+}
